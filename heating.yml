@@ -1,0 +1,51 @@
+blueprint:
+  name: Room Heating - Boiler vs AC
+  description: >
+    Control a room climate device based on a target temperature input_number.
+    If `binary_sensor.heatwithairconditioning` is off, set the target temp.
+    Otherwise, drop the heating to frost protect (8°C).
+  domain: automation
+  input:
+    target_temperature:
+      name: Target temperature input_number
+      description: The input_number entity that stores the room’s desired temp
+      selector:
+        entity:
+          domain: input_number
+    climate_device:
+      name: Climate device
+      description: The climate entity to control
+      selector:
+        entity:
+          domain: climate
+    heatwithac_sensor:
+      name: Heat with AC sensor
+      description: The binary_sensor that indicates whether to heat with AC
+      default: binary_sensor.heatwithairconditioning
+      selector:
+        entity:
+          domain: binary_sensor
+
+triggers:
+  - trigger: state
+    entity_id: !input target_temperature
+
+actions:
+  - if:
+      - condition: state
+        entity_id: !input heatwithac_sensor
+        state: "off"
+    then:
+      - action: climate.set_temperature
+        data:
+          temperature: "{{ states(target_temperature) | float }}"
+        target:
+          entity_id: !input climate_device
+    else:
+      - action: climate.set_temperature
+        data:
+          temperature: 8
+        target:
+          entity_id: !input climate_device
+
+mode: single
