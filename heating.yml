@@ -65,36 +65,39 @@ actions:
           entity_id: !input ac_entity
     
     else:
-      # Use AC for heating
+      # Use AC for heating mode
       - action: climate.set_temperature
         data:
           temperature: 8
         target:
           entity_id: !input wiser_entity
       
-      - action: rest_command.set_ac_optional_mode
-        data:
-          device_id: !input ac_device_id
-          command: setAcOptionalMode
-          arguments:
-            - quiet
-      
-      - action: climate.set_temperature
-        data:
-          temperature: "{{ states(target_temperature_entity) | float }}"
-          hvac_mode: heat
-        target:
-          entity_id: !input ac_entity
-      
-      # Turn off AC if temperature is below 17
-      - condition: numeric_state
-        entity_id: !input target_temperature_entity
-        below: 17
-      
-      - action: climate.turn_off
-        data: {}
-        target:
-          entity_id: !input ac_entity
+      - if:
+          - condition: numeric_state
+            entity_id: !input target_temperature_entity
+            above: 17
+        then:
+          # Temperature above 17°C - use AC for heating
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ states(target_temperature_entity) | float }}"
+              hvac_mode: heat
+            target:
+              entity_id: !input ac_entity
+          
+          - action: rest_command.set_ac_optional_mode
+            data:
+              device_id: !input ac_device_id
+              command: setAcOptionalMode
+              arguments:
+                - quiet
+        
+        else:
+          # Temperature 17°C or below - turn off AC
+          - action: climate.turn_off
+            data: {}
+            target:
+              entity_id: !input ac_entity
 
 mode: single
 
