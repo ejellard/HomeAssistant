@@ -1,26 +1,38 @@
 blueprint:
   name: Room Heating - Boiler vs AC
-  description: >
-    Control a room climate device based on a target temperature input_number.
-    If `binary_sensor.heatwithairconditioning` is off, set the target temp.
-    Otherwise, drop the heating to frost protect (8°C).
+  description: Automatically control room heating using either boiler or AC based on a binary sensor
   domain: automation
   input:
-    target_temperature:
-      name: Target temperature input_number
-      description: The input_number entity that stores the room’s desired temp
+    target_temperature_entity:
+      name: Target Temperature Input
+      description: The input_number entity that sets the target temperature for this room
       selector:
         entity:
           domain: input_number
-    climate_device:
-      name: Climate device
-      description: The climate entity to control
+    
+    ac_entity:
+      name: Air Conditioner Climate Entity
+      description: The climate entity for the room's air conditioning unit
       selector:
         entity:
           domain: climate
-    heatwithac_sensor:
-      name: Heat with AC sensor
-      description: The binary_sensor that indicates whether to heat with AC
+    
+    wiser_entity:
+      name: Wiser Heating Climate Entity
+      description: The climate entity for the room's Wiser heating system
+      selector:
+        entity:
+          domain: climate
+    
+    ac_device_id:
+      name: AC Device ID
+      description: The device ID used for the rest_command.set_ac_optional_mode
+      selector:
+        text:
+    
+    heating_mode_sensor:
+      name: Heat with AC Binary Sensor
+      description: Binary sensor that determines whether to use AC for heating (on) or boiler (off)
       default: binary_sensor.heatwithairconditioning
       selector:
         entity:
@@ -28,24 +40,63 @@ blueprint:
 
 triggers:
   - trigger: state
-    entity_id: !input target_temperature
+    entity_id: !input target_temperature_entity
+  - trigger: state
+    entity_id: !input heating_mode_sensor
+
+conditions: []
 
 actions:
   - if:
       - condition: state
-        entity_id: !input heatwithac_sensor
+        entity_id: !input heating_mode_sensor
         state: "off"
     then:
+      # Use Wiser boiler for heating
       - action: climate.set_temperature
         data:
-          temperature: "{{ states(target_temperature) | float }}"
+          temperature: "{{ states(target_temperature_entity) | float }}"
         target:
-          entity_id: !input climate_device
+          entity_id: !input wiser_entity
+      
+      - action: climate.turn_off
+        data: {}
+        target:
+          entity_id: !input ac_entity
+    
     else:
+      # Use AC for heating
       - action: climate.set_temperature
         data:
           temperature: 8
         target:
-          entity_id: !input climate_device
+          entity_id: !input wiser_entity
+      
+      - action: rest_command.set_ac_optional_mode
+        data:
+          device_id: !input ac_device_id
+          command: setAcOptionalMode
+          arguments:
+            - quiet
+      
+      - action: climate.set_temperature
+        data:
+          temperature: "{{ states(target_temperature_entity) | float }}"
+          hvac_mode: heat
+        target:
+          entity_id: !input ac_entity
+      
+      # Turn off AC if temperature is below 17
+      - condition: numeric_state
+        entity_id: !input target_temperature_entity
+        below: 17
+      
+      - action: climate.turn_off
+        data: {}
+        target:
+          entity_id: !input ac_entity
 
 mode: single
+
+variables:
+  target_temperature_entity: !input target_temperature_entity
