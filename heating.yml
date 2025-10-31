@@ -80,7 +80,7 @@ actions:
           # Temperature above 17°C - use AC for heating
           - action: climate.set_temperature
             data:
-              temperature: "{{ states(target_temperature_entity) | float }}"
+              temperature: "{{ (states(target_temperature_entity) | float) + 2 }}"
               hvac_mode: heat
             target:
               entity_id: !input ac_entity
