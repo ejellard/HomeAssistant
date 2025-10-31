@@ -24,12 +24,6 @@ blueprint:
         entity:
           domain: climate
     
-    ac_device_id:
-      name: AC Device ID
-      description: The device ID used for the rest_command.set_ac_optional_mode
-      selector:
-        text:
-    
     heating_mode_sensor:
       name: Heat with AC Binary Sensor
       description: Binary sensor that determines whether to use AC for heating (on) or boiler (off)
@@ -84,13 +78,12 @@ actions:
               hvac_mode: heat
             target:
               entity_id: !input ac_entity
-          
-          - action: rest_command.set_ac_optional_mode
+          - action: climate.set_preset_mode
+            metadata: {}
             data:
-              device_id: !input ac_device_id
-              command: setAcOptionalMode
-              arguments:
-                - quiet
+              preset_mode: quiet
+            target:
+              entity_id: !input ac_entity
         
         else:
           # Temperature 17°C or below - turn off AC
