@@ -69,7 +69,7 @@ actions:
       - if:
           - condition: numeric_state
             entity_id: !input target_temperature_entity
-            above: 17
+            above: 15
         then:
           # Temperature above 17°C - use AC for heating
           - action: climate.set_temperature
