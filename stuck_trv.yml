@@ -51,6 +51,7 @@ blueprint:
 
     whole_house_heating_sensor:
       name: Whole-house heating sensor
+      default: "sensor.wiser_heating"
       description: >
         Sensor showing whether heating is active elsewhere, e.g. sensor.wiser_heating.
       selector:
