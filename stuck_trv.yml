@@ -5,6 +5,11 @@ blueprint:
     sensor, while that room's radiator/TRV is not heating, central heating is on
     elsewhere, and any optional AC units for that room are off.
 
+    This blueprint is designed to catch cases where the room was already warming
+    before the boiler/heating came on. It therefore checks periodically and when
+    relevant entities change, rather than only when the derivative sensor first
+    crosses the threshold.
+
     The room name is automatically derived from the selected TRV/climate entity's
     friendly name. You can override it if needed.
   domain: automation
@@ -24,7 +29,8 @@ blueprint:
 
     derivative_threshold:
       name: Derivative threshold
-      description: Notify when the derivative sensor goes above this value.
+      description: >
+        Notify when the derivative sensor is above this value.
       default: 1
       selector:
         number:
@@ -45,7 +51,6 @@ blueprint:
 
     whole_house_heating_sensor:
       name: Whole-house heating sensor
-      default: "sensor.wiser_heating"
       description: >
         Sensor showing whether heating is active elsewhere, e.g. sensor.wiser_heating.
       selector:
@@ -55,7 +60,8 @@ blueprint:
 
     whole_house_heating_on_state:
       name: Whole-house heating 'on' state
-      description: The state of the whole-house heating sensor when heating is on.
+      description: >
+        The state of the whole-house heating sensor when heating is on.
       default: "On"
       selector:
         text:
@@ -103,6 +109,20 @@ blueprint:
       selector:
         text:
 
+    check_interval_minutes:
+      name: Periodic check interval
+      description: >
+        How often to re-check while the derivative may already be high. Lower values
+        catch problems faster but run more often.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          step: 1
+          mode: slider
+          unit_of_measurement: minutes
+
     cooldown:
       name: Cooldown
       description: >
@@ -118,6 +138,7 @@ mode: single
 
 variables:
   derivative_sensor: !input temperature_derivative_sensor
+  derivative_threshold_value: !input derivative_threshold
   room_climate_entity: !input room_climate
   heating_sensor: !input whole_house_heating_sensor
   heating_on_state: !input whole_house_heating_on_state
@@ -142,11 +163,48 @@ variables:
     {% endif %}
 
 triggers:
+  # Fires when the room first starts warming quickly.
   - trigger: numeric_state
     entity_id: !input temperature_derivative_sensor
     above: !input derivative_threshold
 
+  # Fires when the whole-house heating turns on while the room may already be warming.
+  - trigger: state
+    entity_id: !input whole_house_heating_sensor
+
+  # Fires when the room TRV starts/stops calling for heat.
+  - trigger: state
+    entity_id: !input room_climate
+    attribute: is_heating
+
+  # Fires when optional AC entities change state.
+  - trigger: state
+    entity_id: !input ac_climate_entities
+
+  # Fallback check, so it still catches a room that was already warming
+  # before the boiler/heating became active.
+  - trigger: time_pattern
+    minutes: "/5"
+
 conditions:
+  # Only continue if the periodic trigger interval matches the configured interval.
+  # Non-periodic triggers always pass this condition.
+  - condition: template
+    value_template: >-
+      {% set interval = check_interval_minutes | default(5) | int(5) %}
+      {% if trigger.platform != 'time_pattern' %}
+        true
+      {% else %}
+        {{ now().minute % interval == 0 }}
+      {% endif %}
+
+  # The room is currently warming faster than the configured threshold.
+  # This is essential because some triggers fire because heating/TRV/AC changed,
+  # not because the derivative sensor itself changed.
+  - condition: template
+    value_template: >-
+      {{ states(derivative_sensor) | float(0) > derivative_threshold_value | float(0) }}
+
   # The room's own TRV/radiator is not calling for heat.
   - condition: template
     value_template: >-
