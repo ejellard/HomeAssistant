@@ -1,0 +1,180 @@
+blueprint:
+  name: TRV stuck open / heating without source
+  description: >
+    Notify when a room appears to be heating up, based on a temperature derivative
+    sensor, while that room's radiator/TRV is not heating, central heating is on
+    elsewhere, and any optional AC units for that room are off.
+
+    The room name is automatically derived from the selected TRV/climate entity's
+    friendly name. You can override it if needed.
+  domain: automation
+  author: Ed Jellard
+  source_url: https://github.com/ejellard/HomeAssistant
+
+  input:
+    temperature_derivative_sensor:
+      name: Temperature derivative sensor
+      description: >
+        Sensor that rises when the room is getting hotter, e.g.
+        sensor.marcel_temperature_derivative.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+
+    derivative_threshold:
+      name: Derivative threshold
+      description: Notify when the derivative sensor goes above this value.
+      default: 1
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.1
+          mode: box
+
+    room_climate:
+      name: Room TRV / radiator climate entity
+      description: >
+        The climate entity for the room radiator/TRV. Its is_heating attribute
+        must be false for the alert to fire.
+      selector:
+        entity:
+          filter:
+            - domain: climate
+
+    whole_house_heating_sensor:
+      name: Whole-house heating sensor
+      default: "sensor.wiser_heating"
+      description: >
+        Sensor showing whether heating is active elsewhere, e.g. sensor.wiser_heating.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+
+    whole_house_heating_on_state:
+      name: Whole-house heating 'on' state
+      description: The state of the whole-house heating sensor when heating is on.
+      default: "On"
+      selector:
+        text:
+
+    ac_climate_entities:
+      name: Optional AC climate entities
+      description: >
+        Optional. Select one or more AC climate entities for this room. If selected,
+        all must be off for the alert to fire.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: climate
+
+    room_name_override:
+      name: Optional room name override
+      description: >
+        Optional. Leave blank to derive the room name from the TRV/climate entity's
+        friendly name.
+      default: ""
+      selector:
+        text:
+
+    notify_service:
+      name: Notify service
+      description: >
+        Notification service to call, e.g. notify.mobile_app_ed_s26.
+      default: notify.mobile_app_ed_s26
+      selector:
+        text:
+
+    notification_title:
+      name: Notification title
+      default: Possible stuck-open TRV
+      selector:
+        text:
+
+    notification_message:
+      name: Notification message
+      description: >
+        Message sent to you. You can use {{ room_name }} in the message.
+      default: "{{ room_name }} is heating for no obvious reason"
+      selector:
+        text:
+
+    cooldown:
+      name: Cooldown
+      description: >
+        How long to wait after notifying before this automation can notify again.
+      default:
+        hours: 3
+        minutes: 0
+        seconds: 0
+      selector:
+        duration:
+
+mode: single
+
+variables:
+  derivative_sensor: !input temperature_derivative_sensor
+  room_climate_entity: !input room_climate
+  heating_sensor: !input whole_house_heating_sensor
+  heating_on_state: !input whole_house_heating_on_state
+  ac_entities: !input ac_climate_entities
+  room_name_input: !input room_name_override
+  message_template: !input notification_message
+  room_name: >-
+    {% set override = room_name_input | trim %}
+    {% if override %}
+      {{ override }}
+    {% else %}
+      {% set friendly = state_attr(room_climate_entity, 'friendly_name') or room_climate_entity %}
+      {{ friendly
+          | regex_replace('(?i)^wiser\\s+', '')
+          | regex_replace('(?i)^radiator\\s+', '')
+          | regex_replace('(?i)^trv\\s+', '')
+          | regex_replace('(?i)\\s+radiator$', '')
+          | regex_replace('(?i)\\s+trv$', '')
+          | regex_replace('(?i)\\s+thermostat$', '')
+          | replace('_', ' ')
+          | trim }}
+    {% endif %}
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input temperature_derivative_sensor
+    above: !input derivative_threshold
+
+conditions:
+  # The room's own TRV/radiator is not calling for heat.
+  - condition: template
+    value_template: >-
+      {{ state_attr(room_climate_entity, 'is_heating') == false }}
+
+  # Heating is active somewhere else in the house.
+  - condition: template
+    value_template: >-
+      {{ states(heating_sensor) == heating_on_state }}
+
+  # Optional AC check. If no AC entities are selected, this condition passes.
+  # If AC entities are selected, every selected climate entity must be off.
+  - condition: template
+    value_template: >-
+      {% if ac_entities | count == 0 %}
+        true
+      {% else %}
+        {{ expand(ac_entities)
+            | rejectattr('state', 'eq', 'off')
+            | list
+            | count == 0 }}
+      {% endif %}
+
+actions:
+  - action: !input notify_service
+    data:
+      title: !input notification_title
+      message: >-
+        {{ message_template | replace('{{ room_name }}', room_name) }}
+
+  - delay: !input cooldown
