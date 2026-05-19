@@ -10,8 +10,8 @@ blueprint:
     relevant entities change, rather than only when the derivative sensor first
     crosses the threshold.
 
-    The room name is automatically derived from the selected TRV/climate entity's
-    friendly name. You can override it if needed.
+    The room name is automatically derived from the area assigned to the selected
+    temperature derivative sensor. You can override it if needed.
   domain: automation
   author: Ed Jellard
   source_url: https://github.com/ejellard/HomeAssistant
@@ -51,7 +51,7 @@ blueprint:
 
     whole_house_heating_sensor:
       name: Whole-house heating sensor
-      default: "sensor.wiser_heating"
+      default: sensor.wiser_heating
       description: >
         Sensor showing whether heating is active elsewhere, e.g. sensor.wiser_heating.
       selector:
@@ -82,8 +82,8 @@ blueprint:
     room_name_override:
       name: Optional room name override
       description: >
-        Optional. Leave blank to derive the room name from the TRV/climate entity's
-        friendly name.
+        Optional. Leave blank to use the area assigned to the temperature
+        derivative sensor.
       default: ""
       selector:
         text:
@@ -146,21 +146,14 @@ variables:
   ac_entities: !input ac_climate_entities
   room_name_input: !input room_name_override
   message_template: !input notification_message
+  check_interval_minutes_value: !input check_interval_minutes
+
   room_name: >-
     {% set override = room_name_input | trim %}
     {% if override %}
       {{ override }}
     {% else %}
-      {% set friendly = state_attr(room_climate_entity, 'friendly_name') or room_climate_entity %}
-      {{ friendly
-          | regex_replace('(?i)^wiser\\s+', '')
-          | regex_replace('(?i)^radiator\\s+', '')
-          | regex_replace('(?i)^trv\\s+', '')
-          | regex_replace('(?i)\\s+radiator$', '')
-          | regex_replace('(?i)\\s+trv$', '')
-          | regex_replace('(?i)\\s+thermostat$', '')
-          | replace('_', ' ')
-          | trim }}
+      {{ area_name(derivative_sensor) }}
     {% endif %}
 
 triggers:
@@ -169,7 +162,8 @@ triggers:
     entity_id: !input temperature_derivative_sensor
     above: !input derivative_threshold
 
-  # Fires when the whole-house heating turns on while the room may already be warming.
+  # Fires when the whole-house heating sensor changes.
+  # The condition below checks whether it is actually on.
   - trigger: state
     entity_id: !input whole_house_heating_sensor
 
@@ -178,21 +172,17 @@ triggers:
     entity_id: !input room_climate
     attribute: is_heating
 
-  # Fires when optional AC entities change state.
-  - trigger: state
-    entity_id: !input ac_climate_entities
-
   # Fallback check, so it still catches a room that was already warming
   # before the boiler/heating became active.
   - trigger: time_pattern
-    minutes: "/5"
+    minutes: "*"
 
 conditions:
   # Only continue if the periodic trigger interval matches the configured interval.
   # Non-periodic triggers always pass this condition.
   - condition: template
     value_template: >-
-      {% set interval = check_interval_minutes | default(5) | int(5) %}
+      {% set interval = check_interval_minutes_value | int(5) %}
       {% if trigger.platform != 'time_pattern' %}
         true
       {% else %}
@@ -200,7 +190,7 @@ conditions:
       {% endif %}
 
   # The room is currently warming faster than the configured threshold.
-  # This is essential because some triggers fire because heating/TRV/AC changed,
+  # This is essential because some triggers fire because heating/TRV changed,
   # not because the derivative sensor itself changed.
   - condition: template
     value_template: >-
