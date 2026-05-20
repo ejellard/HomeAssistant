@@ -55,19 +55,12 @@ blueprint:
       default: sensor.wiser_heating
       description: >
         Sensor showing whether heating is active somewhere in the house, e.g.
-        sensor.wiser_heating.
+        sensor.wiser_heating. This blueprint expects the sensor state to be "On"
+        when heating is active.
       selector:
         entity:
           filter:
             - domain: sensor
-
-    whole_house_heating_on_state:
-      name: Whole-house heating 'on' state
-      description: >
-        The state of the whole-house heating sensor when heating is on.
-      default: "On"
-      selector:
-        text:
 
     ac_climate_entities:
       name: Optional AC climate entities
@@ -136,7 +129,6 @@ variables:
   derivative_threshold_value: !input derivative_threshold
   room_heating_demand_sensor_entity: !input room_heating_demand_sensor
   heating_sensor: !input whole_house_heating_sensor
-  heating_on_state: !input whole_house_heating_on_state
   ac_entities: !input ac_climate_entities
   room_name_input: !input room_name_override
   check_interval_minutes_value: !input check_interval_minutes
@@ -192,9 +184,10 @@ conditions:
       {{ states(room_heating_demand_sensor_entity) | float(0) == 0 }}
 
   # Heating is active somewhere else in the house.
+  # Hardcoded to "On" as requested.
   - condition: template
     value_template: >-
-      {{ states(heating_sensor) == heating_on_state }}
+      {{ states(heating_sensor) == 'On' }}
 
   # Optional AC check. If no AC entities are selected, this condition passes.
   # If AC entities are selected, every selected climate entity must be off.
