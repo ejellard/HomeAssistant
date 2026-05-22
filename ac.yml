@@ -1,0 +1,199 @@
+blueprint:
+  name: AC cooling from Bluetti battery with hysteresis
+  description: >
+    Turns an AC climate device on when the room is hot and the Bluetti battery
+    is high enough. Keeps it running until the room is cooler, the battery drops,
+    or the cooling window ends.
+  domain: automation
+
+  input:
+    room_temperature_sensor:
+      name: Room temperature sensor
+      selector:
+        entity:
+          domain: sensor
+
+    outside_temperature_sensor:
+      name: Outside temperature sensor
+      description: Used only to decide whether the AC is allowed to start.
+      default: sensor.openweathermap_temperature
+      selector:
+        entity:
+          domain: sensor
+
+    climate_device:
+      name: AC climate device
+      selector:
+        entity:
+          domain: climate
+
+    battery_percent_sensor:
+      name: Bluetti battery percentage sensor
+      selector:
+        entity:
+          domain: sensor
+
+    room_turn_on_temperature:
+      name: Turn on when room is above
+      default: 21
+      selector:
+        number:
+          min: 10
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: box
+
+    room_turn_off_temperature:
+      name: Turn off when room is below
+      default: 19
+      selector:
+        number:
+          min: 10
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: box
+
+    outside_minimum_temperature:
+      name: Only start if outside is above
+      description: Prevents AC starting in winter or on cold days.
+      default: 16
+      selector:
+        number:
+          min: -10
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: box
+
+    battery_turn_on_percent:
+      name: Turn on when battery is above
+      default: 90
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: box
+
+    battery_turn_off_percent:
+      name: Turn off when battery is below
+      default: 75
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          unit_of_measurement: "%"
+          mode: box
+
+    ac_target_temperature:
+      name: AC target temperature
+      default: 20
+      selector:
+        number:
+          min: 16
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: box
+
+    cooling_start_time:
+      name: Cooling allowed from
+      default: "11:00:00"
+      selector:
+        time:
+
+    latest_start_time:
+      name: Latest time AC can start
+      default: "18:00:00"
+      selector:
+        time:
+
+    force_off_time:
+      name: Force AC off at
+      default: "19:00:00"
+      selector:
+        time:
+
+trigger:
+  - platform: state
+    entity_id: !input battery_percent_sensor
+
+  - platform: state
+    entity_id: !input room_temperature_sensor
+
+  - platform: state
+    entity_id: !input outside_temperature_sensor
+
+  - platform: time
+    at: !input cooling_start_time
+
+  - platform: time
+    at: !input latest_start_time
+
+  - platform: time
+    at: !input force_off_time
+    id: force_off_time
+
+condition: []
+
+action:
+  - choose:
+      # Force off at the configured end time
+      - conditions:
+          - condition: trigger
+            id: force_off_time
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_device
+
+      # Turn off if the battery has dropped too far
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input battery_percent_sensor
+            below: !input battery_turn_off_percent
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_device
+
+      # Turn off if the room has cooled enough
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input room_temperature_sensor
+            below: !input room_turn_off_temperature
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_device
+
+      # Turn on if hot enough, warm enough outside, battery high enough, and within start window
+      - conditions:
+          - condition: time
+            after: !input cooling_start_time
+            before: !input latest_start_time
+
+          - condition: numeric_state
+            entity_id: !input room_temperature_sensor
+            above: !input room_turn_on_temperature
+
+          - condition: numeric_state
+            entity_id: !input outside_temperature_sensor
+            above: !input outside_minimum_temperature
+
+          - condition: numeric_state
+            entity_id: !input battery_percent_sensor
+            above: !input battery_turn_on_percent
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_device
+            data:
+              temperature: !input ac_target_temperature
+              hvac_mode: cool
+
+mode: single
