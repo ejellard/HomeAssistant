@@ -118,6 +118,10 @@ blueprint:
       selector:
         time:
 
+variables:
+  cooling_start_time_input: !input cooling_start_time
+  force_off_time_input: !input force_off_time
+
 trigger:
   - platform: state
     entity_id: !input battery_percent_sensor
@@ -138,7 +142,12 @@ trigger:
     at: !input force_off_time
     id: force_off_time
 
-condition: []
+condition:
+  - condition: template
+    value_template: >
+      {% set start = today_at(cooling_start_time_input) - timedelta(minutes=1) %}
+      {% set end = today_at(force_off_time_input) + timedelta(minutes=1) %}
+      {{ start <= now() <= end }}
 
 action:
   - choose:
