@@ -205,4 +205,14 @@ action:
               temperature: !input ac_target_temperature
               hvac_mode: cool
 
+          - delay:
+              seconds: 60
+
+          - service: climate.set_temperature
+            target:
+              entity_id: !input climate_device
+            data:
+              temperature: !input ac_target_temperature
+              hvac_mode: cool
+
 mode: single
