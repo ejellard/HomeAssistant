@@ -205,6 +205,12 @@ action:
               temperature: !input ac_target_temperature
               hvac_mode: cool
 
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input climate_device
+            data:
+              preset_mode: quiet
+
           - delay:
               seconds: 60
 
@@ -214,5 +220,11 @@ action:
             data:
               temperature: !input ac_target_temperature
               hvac_mode: cool
+
+          - service: climate.set_preset_mode
+            target:
+              entity_id: !input climate_device
+            data:
+              preset_mode: quiet
 
 mode: single
