@@ -100,6 +100,25 @@ blueprint:
           unit_of_measurement: "°C"
           mode: box
 
+    ac_preset_mode:
+      name: AC preset mode
+      description: Preset mode to use when turning the AC on.
+      default: quiet
+      selector:
+        select:
+          mode: dropdown
+          options:
+            - label: None
+              value: none
+            - label: Sleep
+              value: sleep
+            - label: Quiet
+              value: quiet
+            - label: Smart saver
+              value: smart saver
+            - label: Boost
+              value: boost
+
     cooling_start_time:
       name: Cooling allowed from
       default: "11:00:00"
@@ -209,7 +228,7 @@ action:
             target:
               entity_id: !input climate_device
             data:
-              preset_mode: quiet
+              preset_mode: !input ac_preset_mode
 
           - delay:
               seconds: 60
@@ -225,6 +244,6 @@ action:
             target:
               entity_id: !input climate_device
             data:
-              preset_mode: quiet
+              preset_mode: !input ac_preset_mode
 
 mode: single
