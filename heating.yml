@@ -75,7 +75,7 @@ actions:
       # Use AC for heating mode
       - action: climate.set_temperature
         data:
-          temperature: 8
+          temperature: 15
         target:
           entity_id: !input wiser_entity
       
