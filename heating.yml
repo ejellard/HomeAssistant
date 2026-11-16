@@ -41,11 +41,52 @@ blueprint:
         entity:
           domain: switch
 
+    daytime_minimum_temperature:
+      name: Daytime Minimum Temperature
+      description: Boiler minimum during the day when heating with AC. The AC only heats when the target is above this, day or night.
+      default: 15
+      selector:
+        number:
+          min: 5
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+
+    overnight_minimum_temperature:
+      name: Overnight Minimum Temperature
+      description: Boiler minimum overnight when heating with AC
+      default: 8
+      selector:
+        number:
+          min: 5
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+
+    daytime_start:
+      name: Daytime Starts
+      description: Time the daytime minimum takes over from the overnight minimum
+      default: "09:00:00"
+      selector:
+        time:
+
+    overnight_start:
+      name: Overnight Starts
+      description: Time the overnight minimum takes over from the daytime minimum
+      default: "00:00:00"
+      selector:
+        time:
+
 triggers:
   - trigger: state
     entity_id: !input target_temperature_entity
   - trigger: state
     entity_id: !input heating_mode_sensor
+  # Re-apply the boiler minimum when the day/overnight period changes
+  - trigger: time
+    at: !input daytime_start
+  - trigger: time
+    at: !input overnight_start
 
 conditions:
   # Only run when Wiser Away Mode is OFF
@@ -72,19 +113,18 @@ actions:
           entity_id: !input ac_entity
     
     else:
-      # Use AC for heating mode
+      # Use AC for heating mode - boiler held at the current minimum
       - action: climate.set_temperature
         data:
-          temperature: 15
+          temperature: "{{ boiler_minimum_temperature }}"
         target:
           entity_id: !input wiser_entity
       
       - if:
-          - condition: numeric_state
-            entity_id: !input target_temperature_entity
-            above: 15
+          - condition: template
+            value_template: "{{ states(target_temperature_entity) | float > daytime_minimum_temperature | float }}"
         then:
-          # Temperature above 15°C - use AC for heating
+          # Target above the daytime minimum - use AC for heating
           - action: climate.set_temperature
             data:
               temperature: "{{ (states(target_temperature_entity) | float) + 2 }}"
@@ -109,3 +149,16 @@ mode: single
 
 variables:
   target_temperature_entity: !input target_temperature_entity
+  daytime_minimum_temperature: !input daytime_minimum_temperature
+  overnight_minimum_temperature: !input overnight_minimum_temperature
+  daytime_start: !input daytime_start
+  overnight_start: !input overnight_start
+  is_overnight: >-
+    {% set current_time = now().strftime('%H:%M:%S') %}
+    {% if overnight_start <= daytime_start %}
+      {{ overnight_start <= current_time < daytime_start }}
+    {% else %}
+      {{ current_time >= overnight_start or current_time < daytime_start }}
+    {% endif %}
+  boiler_minimum_temperature: >-
+    {{ (overnight_minimum_temperature if is_overnight else daytime_minimum_temperature) | float }}
